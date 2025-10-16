@@ -226,13 +226,13 @@ def upload_tts_file(token, file_path, text_content):
         print(f"Error during upload: {e}")
         return False
 
-# ============================ תיקון 2: שינוי ל-POST ============================
+# ============================ תיקון 2: שינוי ל-GET ============================
 def delete_file(token, file_path):
     print(f"--- Step 5: Deleting file: {file_path}... ---")
     try:
-        # שימוש ב-POST במקום GET
+        # שימוש ב-GET במקום POST, כפי שהיה במקור וכפי שהתיעוד מרמז
         params = {'token': token, 'path': file_path}
-        response = requests.post(f"{YEMOT_API_URL}/RemoveFile", data=params, timeout=30)
+        response = requests.get(f"{YEMOT_API_URL}/RemoveFile", params=params, timeout=30)
         response.raise_for_status()
         data = response.json()
         if data.get('responseStatus') == 'OK':
@@ -269,11 +269,9 @@ def run_agent_on_audio(audio_data):
 
         tool_name = function_call.name
         
-        # ============================ תיקון 1: בדיקת שם כלי ריק ============================
         if not tool_name:
             print("--- Agent returned an empty tool name. Finishing loop. ---")
             break
-        # ===========================================================================
         
         tool_args = {}
         if hasattr(function_call, 'args') and function_call.args:
