@@ -226,7 +226,7 @@ def upload_tts_file(token, file_path, text_content):
         print(f"Error during upload: {e}")
         return False
 
-# ============================ תיקון 2: שינוי ל-GET והפרמטרים הנכונים ============================
+# ============================ תיקון 2: שימוש ב-FileAction עם GET ============================
 def delete_file(token, file_path):
     print(f"--- Step 5: Deleting file: {file_path}... ---")
     try:
