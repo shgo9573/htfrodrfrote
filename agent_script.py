@@ -23,8 +23,8 @@ GOOGLE_DRIVE_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
 
 # --- הגדרות מערכת ---
 YEMOT_API_URL = "https://www.call2all.co.il/ym/api"
-RECORDING_PATH = "ivr/6/001.wav"
-TTS_DESTINATION_PATH = "ivr/7/001.tts"
+RECORDING_PATH = "ivr2/6/001.wav"
+TTS_DESTINATION_PATH = "ivr2/7/001.tts"
 
 # --- הגדרת Gemini ---
 genai.configure(api_key=GEMINI_API_KEY)
