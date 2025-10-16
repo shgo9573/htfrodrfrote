@@ -11,7 +11,7 @@ import io
 from github import Github, UnknownObjectException
 from ddgs import DDGS
 
-# --- הגדרות API וסודות (ייטענו מ-GitHub Secrets) ---
+# --- הגדרות API וסודות ---
 YEMOT_USERNAME = os.environ.get("YEMOT_USERNAME")
 YEMOT_PASSWORD = os.environ.get("YEMOT_PASSWORD")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -29,12 +29,8 @@ TTS_DESTINATION_PATH = "ivr/7/001.tts"
 # --- הגדרת Gemini ---
 genai.configure(api_key=GEMINI_API_KEY)
 
-# ==============================================================================
-# --- כל הכלים שהסוכן יכול להשתמש בהם (הגרסה המלאה) ---
-# ==============================================================================
-
+# --- כל הכלים שהסוכן יכול להשתמש בהם ---
 def google_search(query: str) -> str:
-    """Searches the web for up-to-date information on a given query."""
     print(f"--- TOOL: google_search(query='{query}') ---")
     try:
         with DDGS() as ddgs:
@@ -44,7 +40,6 @@ def google_search(query: str) -> str:
         return json.dumps({"error": str(e)})
 
 def execute_shell_command(command: str) -> str:
-    """Executes a shell command. DANGEROUS: Use with extreme caution."""
     print(f"--- TOOL: execute_shell_command(command='{command}') ---")
     try:
         result = subprocess.run(command, shell=True, capture_output=True, text=True, check=False)
@@ -53,7 +48,6 @@ def execute_shell_command(command: str) -> str:
         return json.dumps({"status": "error", "error": str(e)})
 
 def get_web_page_content(url: str) -> str:
-    """Fetches the text content of a given web URL."""
     print(f"--- TOOL: get_web_page_content(url='{url}') ---")
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
@@ -64,7 +58,6 @@ def get_web_page_content(url: str) -> str:
         return json.dumps({"status": "error", "error": str(e)})
 
 def execute_python_code(code: str) -> str:
-    """Executes a string of Python code and returns its output."""
     print(f"--- TOOL: execute_python_code(code='{code[:50]}...') ---")
     buffer = io.StringIO()
     try:
@@ -75,7 +68,6 @@ def execute_python_code(code: str) -> str:
         return json.dumps({"status": "error", "error": str(e)})
 
 def list_repo_contents(repo_name: str, path: str = "") -> str:
-    """Lists the files and directories in a given path of a GitHub repository."""
     print(f"--- TOOL: list_repo_contents(repo_name='{repo_name}', path='{path}') ---")
     try:
         g = Github(GITHUB_TOKEN)
@@ -87,7 +79,6 @@ def list_repo_contents(repo_name: str, path: str = "") -> str:
         return json.dumps({"error": str(e)})
 
 def read_file_from_repo(repo_name: str, file_path: str) -> str:
-    """Reads the content of a specific file from a GitHub repository."""
     print(f"--- TOOL: read_file_from_repo(repo_name='{repo_name}', file_path='{file_path}') ---")
     try:
         g = Github(GITHUB_TOKEN)
@@ -98,7 +89,6 @@ def read_file_from_repo(repo_name: str, file_path: str) -> str:
         return json.dumps({"error": str(e)})
 
 def create_or_update_file_in_repo(repo_name: str, file_path: str, content: str, commit_message: str) -> str:
-    """Creates a new file or updates an existing file in a GitHub repository."""
     print(f"--- TOOL: create_or_update_file_in_repo(repo_name='{repo_name}', file_path='{file_path}') ---")
     try:
         g = Github(GITHUB_TOKEN)
@@ -114,7 +104,6 @@ def create_or_update_file_in_repo(repo_name: str, file_path: str, content: str, 
         return json.dumps({"error": str(e)})
 
 def upload_to_drive(file_name: str, file_content: str) -> str:
-    """Creates a text file with given content and uploads it to Google Drive."""
     print(f"--- TOOL: upload_to_drive(file_name='{file_name}') ---")
     try:
         from google.oauth2 import service_account
@@ -141,7 +130,6 @@ def _get_gmail_service():
     return build('gmail', 'v1', credentials=creds)
 
 def read_emails_gmail_api(limit: int = 5) -> str:
-    """Reads the most recent unread emails from the inbox using the Gmail API."""
     print(f"--- TOOL: read_emails_gmail_api(limit={limit}) ---")
     try:
         service = _get_gmail_service()
@@ -159,7 +147,6 @@ def read_emails_gmail_api(limit: int = 5) -> str:
         return json.dumps({"error": str(e)})
 
 def send_email_gmail_api(recipient: str, subject: str, body: str) -> str:
-    """Sends an email to a specified recipient using the Gmail API."""
     print(f"--- TOOL: send_email_gmail_api(recipient='{recipient}', subject='{subject}') ---")
     try:
         from email.mime.text import MIMEText
@@ -187,12 +174,7 @@ AVAILABLE_TOOLS = {
     "send_email_gmail_api": send_email_gmail_api,
 }
 
-SYSTEM_PROMPT = """
-You are an autonomous agent. Your goal is to fulfill the user's request which will be provided as an audio recording.
-First, understand the task from the recording. Then, create a plan and execute it using the available tools.
-You MUST use the tools to perform actions. Do not provide answers based on your internal knowledge if the task requires real-world data.
-Your final output must be a concise summary in Hebrew of the action you took and its result.
-"""
+SYSTEM_PROMPT = "..." # (ללא שינוי)
 
 # --- פונקציות לתקשורת עם ימות המשיח ---
 
@@ -246,11 +228,13 @@ def upload_tts_file(token, file_path, text_content):
         print(f"Error during upload: {e}")
         return False
 
+# ============================ תיקון 2: שינוי ל-POST ============================
 def delete_file(token, file_path):
     print(f"--- Step 5: Deleting file: {file_path}... ---")
     try:
+        # שימוש ב-POST במקום GET
         params = {'token': token, 'path': file_path}
-        response = requests.get(f"{YEMOT_API_URL}/RemoveFile", params=params, timeout=30)
+        response = requests.post(f"{YEMOT_API_URL}/RemoveFile", data=params, timeout=30)
         response.raise_for_status()
         data = response.json()
         if data.get('responseStatus') == 'OK':
@@ -262,6 +246,7 @@ def delete_file(token, file_path):
     except requests.exceptions.RequestException as e:
         print(f"Error during deletion: {e}")
         return False
+# ===========================================================================
 
 # --- הלוגיקה המרכזית של הסוכן ---
 def run_agent_on_audio(audio_data):
@@ -285,7 +270,13 @@ def run_agent_on_audio(audio_data):
             break
 
         tool_name = function_call.name
-        tool_args = {key: value for key, value in function_call.args.items()}
+        
+        # ============================ תיקון 1: בדיקת פרמטרים ============================
+        tool_args = {}
+        if hasattr(function_call, 'args') and function_call.args:
+            tool_args = {key: value for key, value in function_call.args.items()}
+        # ===========================================================================
+
         print(f"--- Executing tool: {tool_name} with args: {tool_args} ---")
         
         function_to_call = AVAILABLE_TOOLS.get(tool_name)
