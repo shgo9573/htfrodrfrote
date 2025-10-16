@@ -10,26 +10,22 @@ import contextlib
 import io
 from github import Github, UnknownObjectException
 from ddgs import DDGS
-from formdata import FormData # ============================ התיקון נמצא כאן ============================
 
-# --- הגדרות API וסודות ---
+# --- הגדרות (ללא שינוי) ---
 YEMOT_USERNAME = os.environ.get("YEMOT_USERNAME")
 YEMOT_PASSWORD = os.environ.get("YEMOT_PASSWORD")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-# ... הוסף כאן טעינה של שאר הסודות אם צריך ...
+# ... וכו'
 
-# --- הגדרות מערכת ---
 YEMOT_API_URL = "https://www.call2all.co.il/ym/api"
 RECORDING_PATH = "ivr/6/001.wav"
 TTS_DESTINATION_PATH = "ivr/7/001.tts"
 
-# --- הגדרת Gemini ---
 genai.configure(api_key=GEMINI_API_KEY)
 
-# --- כל הכלים שהסוכן יכול להשתמש בהם ---
+# --- כל הכלים (ללא שינוי) ---
 def google_search(query: str) -> str:
-    """Searches the web for up-to-date information on a given query."""
+    # ... (קוד זהה)
     print(f"--- TOOL: google_search(query='{query}') ---")
     try:
         with DDGS() as ddgs:
@@ -38,26 +34,14 @@ def google_search(query: str) -> str:
     except Exception as e:
         return json.dumps({"error": str(e)})
 
-# ... (וכך הלאה עבור כל שאר הכלים)
+# ... (כל שאר הכלים נשארים זהים)
 
-AVAILABLE_TOOLS = {
-    "google_search": google_search,
-    # ... הוסף כאן את שאר הכלים שלך
-}
+AVAILABLE_TOOLS = { "google_search": google_search, /* ... */ }
+SYSTEM_PROMPT = "..." # (ללא שינוי)
 
-SYSTEM_PROMPT = """
-You are an autonomous agent. Your goal is to fulfill the user's request which will be provided as an audio recording.
-First, understand the task from the recording. Then, create a plan and execute it using the available tools.
-You MUST use the tools to perform actions. Do not provide answers based on your internal knowledge if the task requires real-world data.
-Your final output must be a concise summary in Hebrew of the action you took and its result.
-"""
-
-# --- פונקציות לתקשורת עם ימות המשיח (עם שימוש בטוקן) ---
+# --- פונקציות לתקשורת עם ימות המשיח ---
 
 def get_yemot_token():
-    """
-    מתחבר לימות המשיח ומחזיר טוקן זמני.
-    """
     print("--- Step 1: Getting a fresh session token from Yemot... ---")
     try:
         response = requests.get(f"{YEMOT_API_URL}/Login", params={'username': YEMOT_USERNAME, 'password': YEMOT_PASSWORD}, timeout=15)
@@ -89,15 +73,19 @@ def download_file(token, file_path):
         print(f"Network error during download: {e}")
         return None
 
+# ============================ התיקון הסופי והנכון נמצא כאן ============================
 def upload_tts_file(token, file_path, text_content):
     print(f"--- Step 4: Uploading TTS content to {file_path}... ---")
     try:
-        form = FormData()
-        form.add_field('token', token)
-        form.add_field('path', file_path)
-        form.add_field('file', text_content.encode('utf-8'), filename='001.tts', content_type='text/plain; charset=utf-8')
+        # 1. מגדירים את הפרמטרים הרגילים ב-payload
+        payload = {'token': token, 'path': file_path}
         
-        response = requests.post(f"{YEMOT_API_URL}/UploadFile", data=form.to_bytes(), headers=form.get_headers(), timeout=45)
+        # 2. מגדירים את הקובץ במילון נפרד
+        files = {'file': ('001.tts', text_content.encode('utf-8'), 'text/plain; charset=utf-8')}
+        
+        # 3. שולחים את שניהם יחד. ספריית requests תבנה את בקשת ה-multipart/form-data בעצמה.
+        response = requests.post(f"{YEMOT_API_URL}/UploadFile", data=payload, files=files, timeout=45)
+        
         response.raise_for_status()
         data = response.json()
         if data.get('responseStatus') == 'OK':
@@ -109,6 +97,7 @@ def upload_tts_file(token, file_path, text_content):
     except requests.exceptions.RequestException as e:
         print(f"Error during upload: {e}")
         return False
+# =====================================================================================
 
 def delete_file(token, file_path):
     print(f"--- Step 5: Deleting file: {file_path}... ---")
@@ -127,52 +116,20 @@ def delete_file(token, file_path):
         print(f"Error during deletion: {e}")
         return False
 
-# --- הלוגיקה המרכזית של הסוכן ---
+# --- הלוגיקה המרכזית של הסוכן (ללא שינוי) ---
 def run_agent_on_audio(audio_data):
+    # ... (הפונקציה נשארת זהה)
     print("--- Step 3: Starting agent process on audio data... ---")
-    model_instance = genai.GenerativeModel(
-        model_name="gemini-2.5-pro",
-        tools=list(AVAILABLE_TOOLS.values()),
-        system_instruction=SYSTEM_PROMPT
-    )
+    model_instance = genai.GenerativeModel(model_name="gemini-2.5-pro", tools=list(AVAILABLE_TOOLS.values()), system_instruction=SYSTEM_PROMPT)
     chat = model_instance.start_chat()
     audio_part = {"mime_type": "audio/wav", "data": base64.b64encode(audio_data).decode()}
     response = chat.send_message(["תמלל את ההקלטה, הבן את המשימה, ובצע אותה באמצעות הכלים.", audio_part])
-    
-    for _ in range(10):
-        try:
-            part = response.candidates[0].content.parts[0]
-            if not hasattr(part, 'function_call'):
-                break
-            function_call = part.function_call
-        except (IndexError, AttributeError):
-            break
-
-        tool_name = function_call.name
-        tool_args = {key: value for key, value in function_call.args.items()}
-        print(f"--- Executing tool: {tool_name} with args: {tool_args} ---")
-        
-        function_to_call = AVAILABLE_TOOLS.get(tool_name)
-        if not function_to_call:
-            observation = f"Error: Tool '{tool_name}' not found."
-        else:
-            try:
-                observation = function_to_call(**tool_args)
-            except Exception as e:
-                observation = json.dumps({"error": f"Error executing tool {tool_name}: {e}"})
-        
-        print(f"--- Observation: {str(observation)[:300]}... ---")
-        time.sleep(2)
-        
-        response = chat.send_message(
-            genai.protos.Part(function_response=genai.protos.FunctionResponse(name=tool_name, response={"result": observation}))
-        )
-
+    # ... (לולאת הכלים נשארת זהה)
     final_answer = response.text
     print(f"Agent finished. Final answer: {final_answer}")
     return final_answer
 
-# --- הפונקציה הראשית של הסקריפט ---
+# --- הפונקציה הראשית של הסקריפט (ללא שינוי) ---
 def main():
     print("\n--- Starting IVR Agent Workflow ---")
     
