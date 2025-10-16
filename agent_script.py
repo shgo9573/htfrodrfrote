@@ -11,7 +11,7 @@ import io
 from github import Github, UnknownObjectException
 from ddgs import DDGS
 
-# --- הגדרות API וסודות (ייטענו מ-GitHub Secrets) ---
+# --- הגדרות API וסודות ---
 YEMOT_USERNAME = os.environ.get("YEMOT_USERNAME")
 YEMOT_PASSWORD = os.environ.get("YEMOT_PASSWORD")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -23,14 +23,13 @@ GOOGLE_DRIVE_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
 
 # --- הגדרות מערכת ---
 YEMOT_API_URL = "https://www.call2all.co.il/ym/api"
-RECORDING_PATH = "ivr2/6/001.wav"
-TTS_DESTINATION_PATH = "ivr2/7/001.tts"
+RECORDING_PATH = "ivr2:/6/001.wav"
+TTS_DESTINATION_PATH = "ivr2:/7/001.tts"
 
 # --- הגדרת Gemini ---
 genai.configure(api_key=GEMINI_API_KEY)
 
 # --- כל הכלים שהסוכן יכול להשתמש בהם ---
-
 def google_search(query: str) -> str:
     """Searches the web for up-to-date information on a given query."""
     print(f"--- TOOL: google_search(query='{query}') ---")
@@ -193,8 +192,28 @@ Your final output must be a concise summary in Hebrew of the action you took and
 """
 
 # --- פונקציות לתקשורת עם ימות המשיח ---
+def test_login():
+    """
+    מבצעת קריאת Login רק כדי לוודא שהפרטים נכונים והחיבור תקין.
+    """
+    print("--- Step 1: Testing Yemot connection... ---")
+    try:
+        response = requests.post(f"{YEMOT_API_URL}/Login", data={'username': YEMOT_USERNAME, 'password': YEMOT_PASSWORD}, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        if data.get('responseStatus') == 'OK':
+            print(">>> Yemot connection successful! <<<")
+            requests.post(f"{YEMOT_API_URL}/Logout", data={'token': data.get('token')})
+            return True
+        else:
+            print(f"CRITICAL ERROR: Yemot login failed: {data.get('message', 'No message')}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"CRITICAL ERROR: Network error during login test: {e}")
+        return False
+
 def download_file(file_path):
-    print(f"Attempting to download file: {file_path}...")
+    print(f"--- Step 2: Attempting to download file: {file_path}... ---")
     try:
         params = {'username': YEMOT_USERNAME, 'password': YEMOT_PASSWORD, 'path': file_path}
         response = requests.post(f"{YEMOT_API_URL}/DownloadFile", data=params, timeout=30)
@@ -202,23 +221,17 @@ def download_file(file_path):
         try:
             error_data = response.json()
             if error_data.get('responseStatus') == 'ERROR':
-                print(f"API Error while downloading: {error_data.get('message')}")
+                print(f"API Message: {error_data.get('message')}")
                 return None
         except json.JSONDecodeError:
-            print("File downloaded successfully.")
+            print(">>> File downloaded successfully. <<<")
             return response.content
-    except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 404:
-            print("File not found (404). This is normal if there's no new recording.")
-        else:
-            print(f"HTTP error during download: {e}")
-        return None
     except requests.exceptions.RequestException as e:
         print(f"Network error during download: {e}")
         return None
 
 def upload_tts_file(file_path, text_content):
-    print(f"Uploading TTS content to {file_path}...")
+    print(f"--- Step 4: Uploading TTS content to {file_path}... ---")
     try:
         payload = {'username': YEMOT_USERNAME, 'password': YEMOT_PASSWORD, 'path': file_path, 'convertAudio': '1'}
         files = {'file': ('001.tts', text_content.encode('utf-8'), 'text/plain; charset=utf-8')}
@@ -226,7 +239,7 @@ def upload_tts_file(file_path, text_content):
         response.raise_for_status()
         data = response.json()
         if data.get('responseStatus') == 'OK':
-            print("TTS file uploaded successfully!")
+            print(">>> TTS file uploaded successfully! <<<")
             return True
         else:
             print(f"Upload failed: {data.get('message', 'No message')}")
@@ -236,14 +249,14 @@ def upload_tts_file(file_path, text_content):
         return False
 
 def delete_file(file_path):
-    print(f"Deleting file: {file_path}...")
+    print(f"--- Step 5: Deleting file: {file_path}... ---")
     try:
         params = {'username': YEMOT_USERNAME, 'password': YEMOT_PASSWORD, 'path': file_path}
         response = requests.post(f"{YEMOT_API_URL}/RemoveFile", data=params, timeout=30)
         response.raise_for_status()
         data = response.json()
         if data.get('responseStatus') == 'OK':
-            print("File deleted successfully.")
+            print(">>> File deleted successfully. <<<")
             return True
         else:
             print(f"Deletion failed: {data.get('message', 'No message')}")
@@ -254,56 +267,41 @@ def delete_file(file_path):
 
 # --- הלוגיקה המרכזית של הסוכן ---
 def run_agent_on_audio(audio_data):
-    print("Starting agent process on audio data...")
-    model_instance = genai.GenerativeModel(
-        model_name="gemini-2.5-pro",
-        tools=list(AVAILABLE_TOOLS.values()),
-        system_instruction=SYSTEM_PROMPT
-    )
+    print("--- Step 3: Starting agent process on audio data... ---")
+    model_instance = genai.GenerativeModel(model_name="gemini-2.5-pro", tools=list(AVAILABLE_TOOLS.values()), system_instruction=SYSTEM_PROMPT)
     chat = model_instance.start_chat()
-    
     audio_part = {"mime_type": "audio/wav", "data": base64.b64encode(audio_data).decode()}
     response = chat.send_message(["תמלל את ההקלטה, הבן את המשימה, ובצע אותה באמצעות הכלים.", audio_part])
-
     for _ in range(10):
         try:
             part = response.candidates[0].content.parts[0]
-            if not hasattr(part, 'function_call'):
-                break
+            if not hasattr(part, 'function_call'): break
             function_call = part.function_call
-        except (IndexError, AttributeError):
-            break
-
+        except (IndexError, AttributeError): break
         tool_name = function_call.name
         tool_args = {key: value for key, value in function_call.args.items()}
         print(f"--- Executing tool: {tool_name} with args: {tool_args} ---")
-        
         function_to_call = AVAILABLE_TOOLS.get(tool_name)
-        if not function_to_call:
-            observation = f"Error: Tool '{tool_name}' not found."
+        if not function_to_call: observation = f"Error: Tool '{tool_name}' not found."
         else:
-            try:
-                observation = function_to_call(**tool_args)
-            except Exception as e:
-                observation = json.dumps({"error": f"Error executing tool {tool_name}: {e}"})
-        
+            try: observation = function_to_call(**tool_args)
+            except Exception as e: observation = json.dumps({"error": f"Error executing tool {tool_name}: {e}"})
         print(f"--- Observation: {str(observation)[:300]}... ---")
         time.sleep(2)
-        
-        response = chat.send_message(
-            genai.protos.Part(function_response=genai.protos.FunctionResponse(name=tool_name, response={"result": observation}))
-        )
-
+        response = chat.send_message(genai.protos.Part(function_response=genai.protos.FunctionResponse(name=tool_name, response={"result": observation})))
     final_answer = response.text
     print(f"Agent finished. Final answer: {final_answer}")
     return final_answer
 
 # --- הפונקציה הראשית של הסקריפט ---
 def main():
-    print("--- Starting IVR Agent Workflow ---")
+    print("\n--- Starting IVR Agent Workflow ---")
     
     if not all([YEMOT_USERNAME, YEMOT_PASSWORD, GEMINI_API_KEY]):
-        print("CRITICAL ERROR: Missing one or more required secrets (YEMOT_USERNAME, YEMOT_PASSWORD, GEMINI_API_KEY).")
+        print("CRITICAL ERROR: Missing required secrets.")
+        return
+
+    if not test_login():
         return
 
     audio_content = download_file(RECORDING_PATH)
@@ -318,7 +316,7 @@ def main():
         return
         
     try:
-        final_response_text = run_agent_on_audio(audio_data)
+        final_response_text = run_agent_on_audio(audio_content)
     except Exception as e:
         print(f"A critical error occurred in the agent loop: {e}")
         final_response_text = "אירעה שגיאה קריטית בתהליך עיבוד הבקשה."
