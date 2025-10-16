@@ -11,7 +11,7 @@ import io
 from github import Github, UnknownObjectException
 from ddgs import DDGS
 
-# --- הגדרות (ללא שינוי) ---
+# --- הגדרות API וסודות (ייטענו מ-GitHub Secrets) ---
 YEMOT_USERNAME = os.environ.get("YEMOT_USERNAME")
 YEMOT_PASSWORD = os.environ.get("YEMOT_PASSWORD")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -21,14 +21,20 @@ GMAIL_TOKEN_JSON = os.environ.get("GMAIL_TOKEN_JSON", "{}")
 GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON", "{}")
 GOOGLE_DRIVE_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
 
+# --- הגדרות מערכת ---
 YEMOT_API_URL = "https://www.call2all.co.il/ym/api"
-RECORDING_PATH = "ivr/6/001.wav"
-TTS_DESTINATION_PATH = "ivr/7/001.tts"
+RECORDING_PATH = "ivr/6/001.wav"  # הקלטה משלוחה 6
+TTS_DESTINATION_PATH = "ivr/7/001.tts" # תשובה לשלוחה 7
 
+# --- הגדרת Gemini ---
 genai.configure(api_key=GEMINI_API_KEY)
 
-# --- כל הכלים (ללא שינוי) ---
+# ==============================================================================
+# --- כל הכלים שהסוכן יכול להשתמש בהם ---
+# ==============================================================================
+
 def google_search(query: str) -> str:
+    """Searches the web for up-to-date information on a given query."""
     print(f"--- TOOL: google_search(query='{query}') ---")
     try:
         with DDGS() as ddgs:
@@ -38,14 +44,16 @@ def google_search(query: str) -> str:
         return json.dumps({"error": str(e)})
 
 def execute_shell_command(command: str) -> str:
+    """Executes a shell command. DANGEROUS: Use with extreme caution."""
     print(f"--- TOOL: execute_shell_command(command='{command}') ---")
     try:
         result = subprocess.run(command, shell=True, capture_output=True, text=True, check=False)
         return json.dumps({"status": "success", "stdout": result.stdout, "stderr": result.stderr, "returncode": result.returncode})
     except Exception as e:
-        return json.dumps({"status": "error", "error": str(e)})
+        return json.dumps({"error": str(e)})
 
 def get_web_page_content(url: str) -> str:
+    """Fetches the text content of a given web URL."""
     print(f"--- TOOL: get_web_page_content(url='{url}') ---")
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
@@ -56,6 +64,7 @@ def get_web_page_content(url: str) -> str:
         return json.dumps({"status": "error", "error": str(e)})
 
 def execute_python_code(code: str) -> str:
+    """Executes a string of Python code and returns its output."""
     print(f"--- TOOL: execute_python_code(code='{code[:50]}...') ---")
     buffer = io.StringIO()
     try:
@@ -66,6 +75,7 @@ def execute_python_code(code: str) -> str:
         return json.dumps({"status": "error", "error": str(e)})
 
 def list_repo_contents(repo_name: str, path: str = "") -> str:
+    """Lists the files and directories in a given path of a GitHub repository."""
     print(f"--- TOOL: list_repo_contents(repo_name='{repo_name}', path='{path}') ---")
     try:
         g = Github(GITHUB_TOKEN)
@@ -77,6 +87,7 @@ def list_repo_contents(repo_name: str, path: str = "") -> str:
         return json.dumps({"error": str(e)})
 
 def read_file_from_repo(repo_name: str, file_path: str) -> str:
+    """Reads the content of a specific file from a GitHub repository."""
     print(f"--- TOOL: read_file_from_repo(repo_name='{repo_name}', file_path='{file_path}') ---")
     try:
         g = Github(GITHUB_TOKEN)
@@ -87,6 +98,7 @@ def read_file_from_repo(repo_name: str, file_path: str) -> str:
         return json.dumps({"error": str(e)})
 
 def create_or_update_file_in_repo(repo_name: str, file_path: str, content: str, commit_message: str) -> str:
+    """Creates a new file or updates an existing file in a GitHub repository."""
     print(f"--- TOOL: create_or_update_file_in_repo(repo_name='{repo_name}', file_path='{file_path}') ---")
     try:
         g = Github(GITHUB_TOKEN)
@@ -102,6 +114,7 @@ def create_or_update_file_in_repo(repo_name: str, file_path: str, content: str, 
         return json.dumps({"error": str(e)})
 
 def upload_to_drive(file_name: str, file_content: str) -> str:
+    """Creates a text file with given content and uploads it to Google Drive."""
     print(f"--- TOOL: upload_to_drive(file_name='{file_name}') ---")
     try:
         from google.oauth2 import service_account
@@ -128,6 +141,7 @@ def _get_gmail_service():
     return build('gmail', 'v1', credentials=creds)
 
 def read_emails_gmail_api(limit: int = 5) -> str:
+    """Reads the most recent unread emails from the inbox using the Gmail API."""
     print(f"--- TOOL: read_emails_gmail_api(limit={limit}) ---")
     try:
         service = _get_gmail_service()
@@ -145,6 +159,7 @@ def read_emails_gmail_api(limit: int = 5) -> str:
         return json.dumps({"error": str(e)})
 
 def send_email_gmail_api(recipient: str, subject: str, body: str) -> str:
+    """Sends an email to a specified recipient using the Gmail API."""
     print(f"--- TOOL: send_email_gmail_api(recipient='{recipient}', subject='{subject}') ---")
     try:
         from email.mime.text import MIMEText
@@ -172,7 +187,12 @@ AVAILABLE_TOOLS = {
     "send_email_gmail_api": send_email_gmail_api,
 }
 
-SYSTEM_PROMPT = "..." # (ללא שינוי)
+SYSTEM_PROMPT = """
+You are an autonomous agent. Your goal is to fulfill the user's request which will be provided as an audio recording.
+First, understand the task from the recording. Then, create a plan and execute it using the available tools.
+You MUST use the tools to perform actions. Do not provide answers based on your internal knowledge if the task requires real-world data.
+Your final output must be a concise summary in Hebrew of the action you took and its result.
+"""
 
 # --- פונקציות לתקשורת עם ימות המשיח ---
 
@@ -226,25 +246,26 @@ def upload_tts_file(token, file_path, text_content):
         print(f"Error during upload: {e}")
         return False
 
-# ============================ תיקון 2: שינוי ל-GET ============================
 def delete_file(token, file_path):
     print(f"--- Step 5: Deleting file: {file_path}... ---")
     try:
-        # שימוש ב-GET במקום POST, כפי שהיה במקור וכפי שהתיעוד מרמז
-        params = {'token': token, 'path': file_path}
-        response = requests.get(f"{YEMOT_API_URL}/RemoveFile", params=params, timeout=30)
+        # שימוש ב-FileAction ובפרמטרים הנכונים
+        params = {'token': token, 'action': 'delete', 'what': file_path}
+        response = requests.get(f"{YEMOT_API_URL}/FileAction", params=params, timeout=30)
+        
         response.raise_for_status()
         data = response.json()
+        
         if data.get('responseStatus') == 'OK':
-            print(">>> File deleted successfully. <<<")
+            print(f">>> File {file_path} deleted successfully! <<<")
             return True
         else:
             print(f"Deletion failed: {data.get('message', 'No message')}")
             return False
+            
     except requests.exceptions.RequestException as e:
-        print(f"Error during deletion: {e}")
+        print(f"CRITICAL ERROR: Network error during deletion: {e}")
         return False
-# ===========================================================================
 
 # --- הלוגיקה המרכזית של הסוכן ---
 def run_agent_on_audio(audio_data):
