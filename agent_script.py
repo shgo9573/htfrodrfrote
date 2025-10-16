@@ -23,14 +23,14 @@ GOOGLE_DRIVE_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
 
 # --- הגדרות מערכת ---
 YEMOT_API_URL = "https://www.call2all.co.il/ym/api"
-RECORDING_PATH = "ivr/6/001.wav"  # הקלטה משלוחה 6
-TTS_DESTINATION_PATH = "ivr/7/001.tts" # תשובה לשלוחה 7
+RECORDING_PATH = "ivr/6/001.wav"
+TTS_DESTINATION_PATH = "ivr/7/001.tts"
 
 # --- הגדרת Gemini ---
 genai.configure(api_key=GEMINI_API_KEY)
 
 # ==============================================================================
-# --- כל הכלים שהסוכן יכול להשתמש בהם ---
+# --- כל הכלים שהסוכן יכול להשתמש בהם (הגרסה המלאה) ---
 # ==============================================================================
 
 def google_search(query: str) -> str:
@@ -50,7 +50,7 @@ def execute_shell_command(command: str) -> str:
         result = subprocess.run(command, shell=True, capture_output=True, text=True, check=False)
         return json.dumps({"status": "success", "stdout": result.stdout, "stderr": result.stderr, "returncode": result.returncode})
     except Exception as e:
-        return json.dumps({"error": str(e)})
+        return json.dumps({"status": "error", "error": str(e)})
 
 def get_web_page_content(url: str) -> str:
     """Fetches the text content of a given web URL."""
@@ -192,6 +192,7 @@ You are an autonomous agent. Your goal is to fulfill the user's request which wi
 First, understand the task from the recording. Then, create a plan and execute it using the available tools.
 You MUST use the tools to perform actions. Do not provide answers based on your internal knowledge if the task requires real-world data.
 Your final output must be a concise summary in Hebrew of the action you took and its result.
+אם אתה שולח מייל תכתוב שזה מבוט טלפוני
 """
 
 # --- פונקציות לתקשורת עם ימות המשיח ---
@@ -249,20 +250,16 @@ def upload_tts_file(token, file_path, text_content):
 def delete_file(token, file_path):
     print(f"--- Step 5: Deleting file: {file_path}... ---")
     try:
-        # שימוש ב-FileAction ובפרמטרים הנכונים
         params = {'token': token, 'action': 'delete', 'what': file_path}
         response = requests.get(f"{YEMOT_API_URL}/FileAction", params=params, timeout=30)
-        
         response.raise_for_status()
         data = response.json()
-        
         if data.get('responseStatus') == 'OK':
             print(f">>> File {file_path} deleted successfully! <<<")
             return True
         else:
-            print(f"Deletion failed: {data.get('message', 'No message')}")
+            print(f"Deletion failed: {data.get('message', 'Unknown error')}")
             return False
-            
     except requests.exceptions.RequestException as e:
         print(f"CRITICAL ERROR: Network error during deletion: {e}")
         return False
