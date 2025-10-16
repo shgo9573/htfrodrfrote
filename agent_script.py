@@ -11,7 +11,7 @@ import io
 from github import Github, UnknownObjectException
 from ddgs import DDGS
 
-# --- הגדרות API וסודות ---
+# --- הגדרות (ללא שינוי) ---
 YEMOT_USERNAME = os.environ.get("YEMOT_USERNAME")
 YEMOT_PASSWORD = os.environ.get("YEMOT_PASSWORD")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -21,15 +21,13 @@ GMAIL_TOKEN_JSON = os.environ.get("GMAIL_TOKEN_JSON", "{}")
 GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON", "{}")
 GOOGLE_DRIVE_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
 
-# --- הגדרות מערכת ---
 YEMOT_API_URL = "https://www.call2all.co.il/ym/api"
 RECORDING_PATH = "ivr/6/001.wav"
 TTS_DESTINATION_PATH = "ivr/7/001.tts"
 
-# --- הגדרת Gemini ---
 genai.configure(api_key=GEMINI_API_KEY)
 
-# --- כל הכלים שהסוכן יכול להשתמש בהם ---
+# --- כל הכלים (ללא שינוי) ---
 def google_search(query: str) -> str:
     print(f"--- TOOL: google_search(query='{query}') ---")
     try:
@@ -271,11 +269,15 @@ def run_agent_on_audio(audio_data):
 
         tool_name = function_call.name
         
-        # ============================ תיקון 1: בדיקת פרמטרים ============================
+        # ============================ תיקון 1: בדיקת שם כלי ריק ============================
+        if not tool_name:
+            print("--- Agent returned an empty tool name. Finishing loop. ---")
+            break
+        # ===========================================================================
+        
         tool_args = {}
         if hasattr(function_call, 'args') and function_call.args:
             tool_args = {key: value for key, value in function_call.args.items()}
-        # ===========================================================================
 
         print(f"--- Executing tool: {tool_name} with args: {tool_args} ---")
         
